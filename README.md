@@ -1,9 +1,17 @@
 English | [简体中文](./README.zh-CN.md)  
-# Vxscan 1.0
+# Vxscan 2.0
 
 Python3 comprehensive scanning tool, mainly used for sensitive file detection (directory scanning and js leak interface), WAF/CDN identification, port scanning, fingerprint/service identification, operating system identification, weak password detection, POC scanning, SQL injection, winding Pass CDN, check the next station
 
 # Update
+2019.7.19  
+Added socks5 global proxy  
+Packaged requests  
+Optimized directory structure  
+Deleted the original html report, using the html report extracted from Perun  
+Removed the json result output, adjusted to store in the sqllite3 database, deduplicate when warehousing, skip if the target host already exists in the db file during scanning  
+Added phpinfo, leaves common information leak scanning plugin  
+Pdns join the viewdns.info interface  
 2019.7.1  
 Display the host whose ping detection failed.  
 The -u command can add multiple targets, separated by commas  
@@ -30,7 +38,8 @@ geoip2
 tldextract  
 lxml  
 pymongo  
-virustotal_python  
+virustotal_python   
+dnspython   
 apt install libpq-dev nmap  
 wget https://geolite.maxmind.com/download/geoip/database/GeoLite2-City.tar.gz  
 After decompressing, put GeoLite2-City.mmdb inside to vxscan/db/GeoLite2-City.mmdb  
@@ -40,22 +49,49 @@ pip3 install -r requirements.txt
 
 Features
 --------
-Generate a dictionary list using Cartesian product method, support custom dictionary list  
-Random UserAgent, XFF, X-Real-IP  
-Customize 404 page recognition, access random pages and then compare the similarities through difflib to identify custom 302 jumps  
-When scanning the directory, first detect the http port and add multiple http ports of one host to the scan target.  
-Filter invalid Content-Type, invalid status?  
-WAF/CDN detection  
-Use the socket to send packets to detect common ports and send different payload detection port service fingerprints.  
-Hosts that encounter full port open (portspoof) automatically skip  
-Call wappalyzer.json and WebEye to determine the website fingerprint  
-It is detected that the CDN or WAF website automatically skips  
-Call nmap to identify the operating system fingerprint  
-Call weak password detection script based on port open (FTP/SSH/TELNET/Mysql/MSSQL...)  
-Call POC scan based on fingerprint identification or port, or click on the open WEB port of IP  
-Analyze sensitive asset information (domain name, mailbox, apikey, password, etc.) in the js file  
-Grab website connections, test SQL injection, LFI, etc.  
-Call some online interfaces to obtain information such as VT, www.yougetsignal.com and other websites, determine the real IP through VT pdns, and query the website by www.yougetsignal.com and api.hackertarget.com.     
+ - Webinfo
+    + GeoIP
+    + DNS resolution verification
+    + Ping survival verification
+    - WAF/CDN detection
+        + WAF Rules
+        + CDN IP segment
+        + CDN ASN
+    + HTTP header
+    + HTTP Server
+    + HTTP Headers
+    - Fingerprint recognition
+        + Wappalyzer
+        + WEBEYE
+    - PDNS
+        + virustotal
+        + viewdns.info
+    - Reverse domain
+        + yougetsignal.com
+        + api.hackertarget.com
+    + Operating system version detection (nmap)
+ - Ports
+    + 400+ Ports
+    + Skip CDN IP
+    + Full port open host (portspoof) automatically skips
+ - URLS
+    + Common backup, backdoor, directory, middleware, sensitive file address
+    + Generate a dictionary list using Cartesian product
+    + Random UserAgent, XFF, X-Real-IP, Referer
+    + Custom 404 page recognition (page similarity, page keyword)
+    + Identify custom 302 jumps
+    + Filter invalid Content-Type, invalid status?
+    + save url, title, contype, rsp_len, rsp_code
+ - Vuln
+    + Add multiple HTTP ports from one host to the POC target
+    + Call POC based on fingerprint and port service
+    + Unauthorized, deserialized, RCE, Sqli...
+ - Report
+    + Results are stored in the Sqlite3 database
+    + Inbound deduplication, detected that existing items will not be scanned
+    + Generate html report
+
+  
 
 Usage
 --------
@@ -66,10 +102,6 @@ optional arguments:
   -u URL, --url URL     Start scanning this url -u xxx.com  
   -i INET, --inet INET  cidr eg. 1.1.1.1 or 1.1.1.0/24  
   -f FILE, --file FILE  read the url from the file  
-  -t THREADS, --threads THREADS  
-                        Set scan thread, default 150  
-  -e EXT, --ext EXT     Set scan suffix, -e php,asp  
-  -w WORD, --word WORD  Read the dict from the file  
 ```  
 
 **1. Scan a website**  
@@ -78,40 +110,169 @@ optional arguments:
 ```python3 vxscan.py -f hosts.txt```  
 **3. cidr eg. 1.1.1.1 or 1.1.1.0/24**  
 ```python3 vxscan.py -i 127.0.0.0/24```  
-**4. Set thread 100, combine only php suffix, use custom dictionary**  
-```python3 vxscan.py -u http://www.xxx.com -e php -t 100 -w ../dict.txt```  
 
 Structure
 --------
 ```
-/
-├─Vxscan.py  main file
+├─Vxscan.py master file
 ├─db
-│  ├─apps.json  Web fingerprint information
-│  ├─apps.txt  Web fingerprint information (WEBEYE)
-│  ├─password.txt  password
-├─report    Report directory
-├─lib       
-│  ├─common.py    Determine CDN, port scan, POC scan, etc.
-│  ├─color.py   Terminal color output
-│  ├─active.py   Judge dns parsing and ping ip survival
-│  ├─save_html.py     Generate html report
-│  ├─waf.py     waf rules
-│  ├─osdetect.py   Operating system version identification
-│  ├─random_header.py   random header
-│  ├─scan_port.py        PortScan
-│  ├─jsparse.py      Grab the website js connection, analyze ip address, link, email, etc.
-│  ├─settings.py      Setting
-│  ├─pyh.py     Generate html
-│  ├─wappalyzer.py    Fingerprint recognition script
-│  ├─sql_injection.py    Grab the website connection and test the SQL injection script
-├─script  
-│  ├─Poc.py         Poc script
-│  ├─......
+│ ├─apps.json           Web fingerprint information
+│ ├─apps.txt            Web fingerprint information (WEBEYE)
+│ ├─GeoLite2-ASN.mmdb       geoip
+│ ├─GeoLite2-City.mmdb      asn
+├─doc                   to store some image or document resources
+├─report                html report related content
+├─lib
+│ ├─common.py           Determine CDN, port scan, POC scan, etc.
+│ ├─color.py            terminal color output
+│ ├─cli_output.py       terminal output
+│ ├─active.py to            judge dns resolution and ping ip survival
+│ ├─save_html.py            Generate html reports
+│ ├─waf.py              waf rules
+│ ├─options.py          option settings
+│ ├─iscdn.py            Determine whether IP is CDN based on ip segment and asn range
+│ ├─osdetect.py         OS version identification
+│ ├─random_header.py        custom header header
+│ ├─settings.py         setting script
+│ ├─vuln.py             Batch call POC scan
+│ ├─url.py              Deduplicate the fetched connection
+│ ├─verify.py           script provides verification interface
+│ ├─sqldb.py            All related to sqlite3 are here
+│ ├─Requests.py         packaged requests library, do some custom settings
+├─script
+│ ├─Poc.py Poc script
+│ ├─......
+├─Plugins
+│ ├─ActiveReconnaissance
+│   ├─active.py             to determine host survival and verify dns resolution
+│   ├─check_waf.py          judge website waf
+│   ├─crawk.py Crawl        website links and test
+│   ├─osdetect.py           Operating System Identification
+│ ├─InformationGathering
+│   ├─geoip.py              Location Search
+│   ├─js_leaks.py js        information disclosure
+│ ├─PassiveReconnaissance
+│   ├─ip_history.py         pdns interface
+│   ├─reverse_domain.py         side station query
+│   ├─virustotal.py         VT Pdns query
+│   ├─wappalyzer.py         CMS passive fingerprint recognition
+│ ├─Scanning
+│   ├─dir_scan              directory scan
+│   ├─port_scan             port scan
+│ ├─Vulnerability
+│   ├─lfi_sqli              Sql injection, LFI detection
 ├─requirements.txt
+├─report.py html            report generation
 ├─logo.jpg
 ├─error.log
 
+```
+
+
+SETTING
+--------
+```python
+# coding=utf-8
+
+# global timeout
+TIMEOUT = 5
+
+# Is the status to be excluded
+BLOCK_CODE = [
+    301, 403, 308, 404, 405, 406, 408, 411, 417, 429, 493, 502, 503, 504, 999
+]
+# Set scan thread
+THREADS = 100
+# Content type to exclude
+BLOCK_CONTYPE = [
+    'image/jpeg', 'image/gif', 'image/png', 'application/javascript',
+    'application/x-javascript', 'text/css', 'application/x-shockwave-flash',
+    'text/javascript', 'image/x-icon'
+]
+
+# Whether to skip directory scanning
+SCANDIR = True
+
+# Whether to start the POC plugin
+POC = True
+
+# Skip if it exists in the result db
+CHECK_DB = False
+
+# invalid 404 page
+PAGE_404 = [
+    'page_404"', "404.png", '找不到页面', '页面找不到', "Not Found", "访问的页面不存在",
+    "page does't exist", 'notice_404', '404 not found', '<title>错误</title>', '内容正在加载', '提示：发生错误', '<title>网站防火墙',
+    '无法加载控制器'
+]
+
+# ping
+PING = True
+
+# socks5 proxy
+# SOCKS5 = ('127.0.0.1', 1080)
+SOCKS5 = ()
+
+# shodan
+SHODAN_API = ''
+
+# VT
+VIRUSTOTAL_API = ''
+
+# cookie
+COOKIE = {'Cookie': 'test'}
+```
+POC
+--------
+**1. Call POC based on port open or fingerprint recognition results**  
+Create a new python file in the script directory, define the check function, the parameters passed in are mainly the ip address, port list, fingerprint identification list, and then return the result:
+```python
+import pymongo
+from lib.verify import verify
+
+timeout = 2
+vuln = ['27017', 'Mongodb']
+
+def check(ip, ports, apps):
+    # Verify is used to verify if there is a Mongodb related result in the scan list. If the port is not open, it will not be scanned.
+    if verify(vuln, ports, apps):
+        try:
+            conn = pymongo.MongoClient(host=ip, port=27017, serverSelectionTimeoutMS=timeout)
+            database_list = conn.list_database_names()
+            if not database_list:
+                conn.close()
+                return
+            conn.close()
+            return '27017 MongoDB Unauthorized Access'
+        except Exception as e:
+            pass
+```
+**2. Traversing on each HTTP port where the target IP is open**   
+Generate the url to be scanned according to the list of port services passed, and then visit it in each web port. The following script will get the title of each http port of ip.  
+```python
+from lib.verify import get_list
+from lib.random_header import HEADERS
+from lxml import etree
+import requests
+
+def get_title(url):
+    try:
+        r = requests.get(url, headers=HEADERS, timeout=3, verify=False)
+        html = etree.HTML(r.text)
+        title = html.xpath('//title/text()')
+        return url + ' | ' + title[0]
+    except:
+        pass
+
+
+def check(ip, ports, apps):
+    result = []
+    probe = get_list(ip, ports)
+    for i in probe:
+        out = get_title(i)
+        if out:
+            result.append(out)
+    return result
 ```
 
 Waf/CDN list
@@ -207,171 +368,12 @@ yunsuo
 Output
 --------
 The following is the AWVS scanner test website results    
-![image](https://github.com/al0ne/A-hunter/raw/master/logo.jpg)
-![image](https://github.com/al0ne/A-hunter/raw/master/logo2.jpg)
-
-```
-
-[
-    {
-        "testphp.vulnweb.com": {
-            "WAF": "NoWAF",
-            "Webinfo": {
-                "apps": [
-                    "Nginx",
-                    "PHP",
-                    "DreamWeaver",
-                    "php"
-                ],
-                "title": "Home of Acunetix Art",
-                "server": "nginx/1.4.1",
-                "pdns": [
-                    "176.28.50.165 : 2019-06-09 02:05:52"
-                ],
-                "reverseip": [
-                    "176.28.50.165",
-                    "rs202995.rs.hosteurope.de",
-                    "testhtml5.vulnweb.com",
-                    "testphp.ingensec.ch",
-                    "testphp.ingensec.com",
-                    "testphp.ingensec.fr",
-                    "testphp.vulnweb.com",
-                    "vulnweb.com",
-                    "www.vulnweb.com"
-                ]
-            },
-            "Ports": [
-                "IMAPS:993",
-                "ssh:22",
-                "imap:143",
-                "http:80",
-                "Unknown:8880",
-                "pop:110",
-                "POP3:995",
-                "smtp:25",
-                "Unknown:8443",
-                "SMTPS:465",
-                "DNS:53",
-                "ftp:21"
-            ],
-            "Ipaddr": "176.28.50.165",
-            "Address": "德国  ",
-            "Vuln": [
-                "http://testphp.vulnweb.com | Home of Acunetix Art",
-                "MySQL SQLi:http://testphp.vulnweb.com/search.php?test=query",
-                "MySQL SQLi:http://testphp.vulnweb.com/artists.php?artist=1",
-                "MySQL SQLi:http://testphp.vulnweb.com/listproducts.php?cat=2"
-            ],
-            "URLS": [
-                {
-                    "rsp_code": 200,
-                    "rsp_len": 12473,
-                    "title": "None",
-                    "contype": "xml",
-                    "url": "/.idea/workspace.xml"
-                },
-                {
-                    "rsp_code": 200,
-                    "rsp_len": 1,
-                    "title": "None",
-                    "contype": "plain",
-                    "url": "/CVS/Root"
-                },
-                {
-                    "rsp_code": 200,
-                    "rsp_len": 4732,
-                    "title": "search",
-                    "contype": "html",
-                    "url": "/search.php"
-                },
-                {
-                    "rsp_code": 200,
-                    "rsp_len": 1,
-                    "title": "None",
-                    "contype": "plain",
-                    "url": "/CVS/Entries"
-                },
-                {
-                    "rsp_code": 200,
-                    "rsp_len": 3265,
-                    "title": "Home of WASP Art",
-                    "contype": "plain",
-                    "url": "/index.bak"
-                },
-                {
-                    "rsp_code": 200,
-                    "rsp_len": 143,
-                    "title": "None",
-                    "contype": "xml",
-                    "url": "/.idea/scopes/scope_settings.xml"
-                },
-                {
-                    "rsp_code": 200,
-                    "rsp_len": 3265,
-                    "title": "Home of WASP Art",
-                    "contype": "zip",
-                    "url": "/index.zip"
-                },
-                {
-                    "rsp_code": 200,
-                    "rsp_len": 275,
-                    "title": "None",
-                    "contype": "xml",
-                    "url": "/.idea/modules.xml"
-                },
-                {
-                    "rsp_code": 200,
-                    "rsp_len": 5523,
-                    "title": "login page",
-                    "contype": "html",
-                    "url": "/login.php"
-                },
-                {
-                    "rsp_code": 200,
-                    "rsp_len": 278,
-                    "title": "Index of /admin/",
-                    "contype": "html",
-                    "url": "/admin/"
-                },
-                {
-                    "rsp_code": 200,
-                    "rsp_len": 224,
-                    "title": "None",
-                    "contype": "xml",
-                    "url": "/crossdomain.xml"
-                },
-                {
-                    "rsp_code": 302,
-                    "rsp_len": 14,
-                    "title": "None",
-                    "contype": "html",
-                    "url": "/userinfo.php"
-                },
-                {
-                    "rsp_code": 200,
-                    "rsp_len": 6,
-                    "title": "None",
-                    "contype": "plain",
-                    "url": "/.idea/.name"
-                },
-                {
-                    "rsp_code": 200,
-                    "rsp_len": 4958,
-                    "title": "Home of Acunetix Art",
-                    "contype": "html",
-                    "url": "/index.php"
-                }
-            ]
-        }
-    }
-]
-```
+![image](https://github.com/al0ne/Vxscan/raw/master/doc/logo.jpg)
+![image](https://github.com/al0ne/Vxscan/raw/master/doc/logo2.jpg)
+![image](https://github.com/al0ne/Vxscan/raw/master/doc/logo3.jpg)
 
 Note
 ------
-Reference cnnetarmy Srchunter design ideas  
-Refer to the weak password module of brut3k1t:  
-Https://github.com/ex0dus-0x/brut3k1t  
 Fingerprint recognition mainly calls Wappalyzer and WebEye:  
 https://github.com/b4ubles/python3-Wappalyzer  
 https://github.com/zerokeeper/WebEye  
@@ -381,10 +383,11 @@ POC-T https://github.com/Xyntax/POC-T/tree/2.0/script
 Perun https://github.com/WyAtu/Perun  
 Refer to the anthx port scan, service judgment:  
 https://raw.githubusercontent.com/AnthraX1/InsightScan/master/scanner.py  
-Injecting the crawler reference:  
-DSSS https://github.com/stamparm/DSSS  
 Js sensitive information regular extraction reference:  
 https://github.com/nsonaniya2010/SubDomainizer  
 WAF judges the use of waf00f and whatwaf judgment rules:  
 https://github.com/EnableSecurity/wafw00f  
 https://github.com/Ekultek/WhatWaf  
+The html report uses: 
+https://github.com/WyAtu/Perun
+https://github.com/ly1102 
